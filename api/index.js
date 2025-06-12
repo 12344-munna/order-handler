@@ -6,6 +6,7 @@ if (!admin.apps.length) {
     admin.initializeApp({
       credential: admin.credential.cert(JSON.parse(process.env.GCP_SERVICE_ACCOUNT_KEY))
     });
+    console.log("Firebase Admin SDK initialized successfully.");
   } catch (error) {
     console.error('Firebase admin initialization error', error.stack);
   }
@@ -37,12 +38,12 @@ function parseOrderDetails(text) {
   return details;
 }
 
-
 // This is the main function Vercel will run for any request to /api
 module.exports = async (req, res) => {
-  // --- Part 1: Handle Facebook's Verification Request (GET) ---
+  // Part 1: Handle Facebook's Verification Request (GET)
   if (req.method === "GET") {
-    const VERIFY_TOKEN = "munna12345"; // Your secret token
+    console.log("Received GET request for webhook verification.");
+    const VERIFY_TOKEN = "munna12345";
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
@@ -50,14 +51,15 @@ module.exports = async (req, res) => {
       console.log("WEBHOOK_VERIFIED_SUCCESSFULLY");
       res.status(200).send(challenge);
     } else {
-      console.error("Webhook verification failed. Token mismatch.");
+      console.error("Webhook verification failed. Token mismatch or missing mode.");
       res.status(403).send("Forbidden");
     }
     return;
   }
 
-  // --- Part 2: Handle Admin's Order Message (POST) ---
+  // Part 2: Handle Admin's Order Message (POST)
   if (req.method === "POST") {
+    console.log("Received POST request from Facebook.");
     const body = req.body;
     if (body.object === "page") {
       for (const entry of body.entry) {
@@ -65,11 +67,13 @@ module.exports = async (req, res) => {
         const messageText = webhookEvent.message ? webhookEvent.message.text : "";
 
         if (messageText && messageText.toLowerCase().includes("/confirmation")) {
-          console.log("Admin confirmation command detected. Processing order...");
+          console.log("--- START: Admin confirmation command detected ---");
           try {
             const orderData = parseOrderDetails(messageText);
+            console.log("1. Parsed Order Details:", JSON.stringify(orderData, null, 2));
 
             await db.runTransaction(async (transaction) => {
+              console.log("2. Starting Firestore Transaction.");
               const inventoryUpdates = [];
               const orderItems = [];
               let totalCostOfGoods = 0;
@@ -77,25 +81,30 @@ module.exports = async (req, res) => {
               for (const code of orderData.productCodes) {
                 const [productCode, size] = code.split("-");
                 if (!productCode || !size) throw new Error(`Invalid code format: ${code}`);
-
-                // =======================================================
-                // THE FIX IS HERE: Changed "inventory" to "products"
-                // =======================================================
+                
+                console.log(`3. Searching for product with code: '${productCode.trim()}' in 'products' collection.`);
                 const inventoryQuery = db.collection("products")
                   .where("productCode", "==", productCode.trim())
                   .limit(1);
 
                 const productSnapshot = await transaction.get(inventoryQuery);
-                if (productSnapshot.empty) throw new Error(`Product not found for code: ${productCode}`);
+                if (productSnapshot.empty) {
+                   console.error(`ERROR: Product not found in Firestore for code: '${productCode.trim()}'`);
+                   throw new Error(`Product not found for code: ${productCode}`);
+                }
                 
                 const productDoc = productSnapshot.docs[0];
                 const productData = productDoc.data();
+                console.log(`4. Found product: ${productData.name} (ID: ${productDoc.id})`);
+
                 const currentSizes = productData.sizes || {};
                 const sizeKey = size.trim().toUpperCase();
 
                 if (!currentSizes[sizeKey] || currentSizes[sizeKey] <= 0) {
+                  console.error(`ERROR: Product ${productData.name} (Size: ${sizeKey}) is out of stock.`);
                   throw new Error(`Product ${productData.name} (Size: ${sizeKey}) is out of stock.`);
                 }
+                console.log(`Stock OK for size ${sizeKey}. Current: ${currentSizes[sizeKey]}.`);
                 
                 currentSizes[sizeKey] -= 1;
                 const newTotalStock = Object.values(currentSizes).reduce((a, b) => a + b, 0);
@@ -104,6 +113,7 @@ module.exports = async (req, res) => {
                   ref: productDoc.ref,
                   update: { sizes: currentSizes, availableAmount: newTotalStock },
                 });
+                console.log(`5. Inventory update prepared for ${productDoc.id}. New stock: ${newTotalStock}`);
 
                 totalCostOfGoods += productData.buyingPrice || 0;
 
@@ -123,10 +133,8 @@ module.exports = async (req, res) => {
                 transaction.update(update.ref, update.update);
               }
 
-              // ====================================================================
-              // This writes to your 'pendingOrders' collection, which is correct
-              // ====================================================================
               const newOrderRef = db.collection("pendingOrders").doc();
+              console.log("6. Creating final order document in 'pendingOrders' collection.");
               transaction.set(newOrderRef, {
                 customerName: orderData.name,
                 customerAddress: orderData.address,
@@ -143,10 +151,13 @@ module.exports = async (req, res) => {
                 orderDate: admin.firestore.FieldValue.serverTimestamp(),
                 userId: webhookEvent.recipient.id,
               });
+              console.log("7. Transaction instructions prepared successfully.");
             });
-            console.log("Transaction successful. Order created.");
+            console.log("--- SUCCESS: Transaction completed. ---");
           } catch (error) {
-            console.error("Error processing admin order:", error.message);
+            console.error("--- ERROR: Order processing failed! ---");
+            console.error("Error Message:", error.message);
+            console.error("Error Stack:", error.stack);
           }
         }
       }
