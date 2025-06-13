@@ -1,5 +1,12 @@
 const admin = require('firebase-admin');
 
+// ======================================================================
+// PASTE YOUR FIREBASE USER ID HERE
+// ======================================================================
+const YOUR_ADMIN_USER_ID = "IVDicYgkXifOezauoPJJ5yaxCEE2";
+// ======================================================================
+
+
 // Securely Initialize Firebase Admin SDK
 if (!admin.apps.length) {
   try {
@@ -40,23 +47,19 @@ function parseOrderDetails(text) {
 
 // This is the main function Vercel will run for any request to /api
 module.exports = async (req, res) => {
-  // --- Part 1: Handle Facebook's Verification Request (GET) ---
   if (req.method === "GET") {
-    const VERIFY_TOKEN = "munna12345"; // Your secret token
+    const VERIFY_TOKEN = "munna12345";
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      console.log("WEBHOOK_VERIFIED_SUCCESSFULLY");
       res.status(200).send(challenge);
     } else {
-      console.error("Webhook verification failed. Token mismatch.");
       res.status(403).send("Forbidden");
     }
     return;
   }
 
-  // --- Part 2: Handle Admin's Order Message (POST) ---
   if (req.method === "POST") {
     const body = req.body;
     if (body.object === "page") {
@@ -135,7 +138,11 @@ module.exports = async (req, res) => {
                 source: "Facebook-Admin",
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
                 orderDate: admin.firestore.FieldValue.serverTimestamp(),
-                userId: webhookEvent.recipient.id,
+                
+                // ===============================================
+                // THE FIX IS HERE: Using your admin user ID
+                // ===============================================
+                userId: YOUR_ADMIN_USER_ID,
               });
             });
             console.log("Transaction successful. Order created.");
