@@ -3,7 +3,7 @@ const admin = require('firebase-admin');
 // ======================================================================
 // PASTE YOUR FIREBASE USER ID HERE
 // ======================================================================
-const YOUR_ADMIN_USER_ID = "IVDicYgkXifOezauoPJJ5yaxCEE2";
+const YOUR_ADMIN_USER_ID = "3yd2vXmTpLZjvsgzPvH7dc8yjKi2";
 // ======================================================================
 
 
