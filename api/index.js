@@ -1,34 +1,44 @@
-// This is the main function Vercel will run for any request to /api
+// The main function Vercel will run for any request to /api
 module.exports = async (req, res) => {
-  // --- Part 1: Handle Facebook's Verification Request (GET) ---
-  if (req.method === "GET") {
-    console.log("--- DEBUG: Received GET request for verification. ---");
-    const VERIFY_TOKEN = "munna12345"; // Your secret token
-    const mode = req.query["hub.mode"];
-    const token = req.query["hub.verify_token"];
-    const challenge = req.query["hub.challenge"];
+  // --- This is the VERY FIRST thing the code will do ---
+  console.log(`--- Request Received --- Method: ${req.method}, URL: ${req.url}`);
 
-    if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      console.log("--- DEBUG: Verification successful. Responding with challenge. ---");
-      res.status(200).send(challenge);
-    } else {
-      console.error("--- DEBUG: Verification FAILED. Token mismatch or missing params. ---");
-      res.status(403).send("Forbidden");
+  try {
+    // --- Part 1: Handle Facebook's Verification Request (GET) ---
+    if (req.method === "GET") {
+      const VERIFY_TOKEN = "munna12345";
+      const mode = req.query["hub.mode"];
+      const token = req.query["hub.verify_token"];
+      const challenge = req.query["hub.challenge"];
+
+      if (mode === "subscribe" && token === VERIFY_TOKEN) {
+        console.log("Verification successful. Responding with challenge.");
+        res.status(200).send(challenge);
+      } else {
+        console.error("Verification FAILED. Token mismatch.");
+        res.status(403).send("Forbidden");
+      }
+      return;
     }
-    return;
+
+    // --- Part 2: Handle ANY Message from Facebook (POST) ---
+    if (req.method === "POST") {
+      console.log("Received POST data. Body:", JSON.stringify(req.body, null, 2));
+
+      // We will stop here. We are not trying to connect to the database yet.
+      // We just want to see if we can receive the message.
+
+      res.status(200).send("EVENT_RECEIVED");
+      return;
+    }
+
+    // If the request is not GET or POST, send an error
+    res.status(405).send("Method Not Allowed");
+
+  } catch (error) {
+    console.error("--- A FATAL ERROR OCCURRED ---");
+    console.error("Error Message:", error.message);
+    console.error("Error Stack:", error.stack);
+    res.status(500).send("Internal Server Error");
   }
-
-  // --- Part 2: Handle ANY Message from Facebook (POST) ---
-  if (req.method === "POST") {
-    console.log("--- DEBUG: Received a POST request from Facebook! ---");
-    
-    // Log the entire message body that Facebook sent.
-    console.log("FULL MESSAGE BODY:", JSON.stringify(req.body, null, 2));
-
-    res.status(200).send("EVENT_RECEIVED");
-    return;
-  }
-
-  // If the request is not GET or POST, send an error
-  res.status(405).send("Method Not Allowed");
 };
